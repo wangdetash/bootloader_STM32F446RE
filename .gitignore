@@ -1,0 +1,54 @@
+# STM32CubeIDE build directories
+Debug/
+Release/
+
+# Compiled objects and dependency files
+*.o
+*.obj
+*.d
+*.su
+*.cyclo
+*.gcno
+*.gcda
+*.gcov
+
+# Firmware build products
+*.elf
+*.axf
+*.hex
+*.bin
+*.map
+*.list
+*.lst
+*.srec
+*.mot
+*.dfu
+
+# Static and generated libraries
+*.a
+*.lib
+
+# CubeIDE workspace-local data
+.metadata/
+.recommenders/
+RemoteSystemsTempFiles/
+
+# IDE caches and temporary files
+*.launch.tmp
+*.bak
+*.tmp
+*.log
+*.swp
+*.swo
+*~
+.#*
+\#*\#
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Optional editor-specific settings
+.vscode/
+.idea/
