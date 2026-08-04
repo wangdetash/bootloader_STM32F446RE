@@ -63,7 +63,8 @@ static void MX_CRC_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-char TestTx[] = "Hello from bootloader\r\n";
+char Selectedbootloader[] = "Bootloader mode\r\n";
+char SelectedApplication[] = "Application mode\r\n";
 /* USER CODE END 0 */
 
 /**
@@ -110,12 +111,21 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  /*check whether the button is pressed or not*/
+  if(HAL_GPIO_ReadPin(KEY_BUTTON_GPIO_PORT,USER_BUTTON_PIN) == GPIO_PIN_RESET)
+  {
+	  HAL_UART_Transmit(&huart2,(uint8_t*)Selectedbootloader,sizeof(Selectedbootloader),HAL_MAX_DELAY);
+  }
+  else
+  {
+	  HAL_UART_Transmit(&huart2,(uint8_t*)SelectedApplication,sizeof(SelectedApplication),HAL_MAX_DELAY);
+  }
   while (1)
   {
 
     /* USER CODE END WHILE */
-	  HAL_UART_Transmit(&huart2,(uint8_t*)TestTx,sizeof(TestTx),HAL_MAX_DELAY);
-	  HAL_UART_Transmit(&huart3,(uint8_t*)TestTx,sizeof(TestTx),HAL_MAX_DELAY);
+
+
 
 	  uint32_t current_tick = HAL_GetTick();
 	  while(HAL_GetTick() <= (current_tick + 1000));
