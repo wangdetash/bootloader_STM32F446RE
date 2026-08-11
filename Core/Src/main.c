@@ -65,6 +65,7 @@ static void MX_CRC_Init(void);
 /* USER CODE BEGIN 0 */
 char Selectedbootloader[] = "Bootloader mode\r\n";
 char SelectedApplication[] = "Application mode\r\n";
+char InWhileLoop[] = "InWhileLoop\r\n";
 /* USER CODE END 0 */
 
 /**
@@ -123,12 +124,13 @@ int main(void)
   while (1)
   {
 
+	  HAL_UART_Transmit(&huart3,(uint8_t*)InWhileLoop,sizeof(InWhileLoop),HAL_MAX_DELAY);
+	  uint32_t current_tick = HAL_GetTick();
+	  while(HAL_GetTick() <= (current_tick + 1000));
     /* USER CODE END WHILE */
 
 
 
-	  uint32_t current_tick = HAL_GetTick();
-	  while(HAL_GetTick() <= (current_tick + 1000));
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
