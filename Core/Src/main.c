@@ -58,6 +58,29 @@ static void MX_USART2_UART_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_CRC_Init(void);
 /* USER CODE BEGIN PFP */
+void bootlader_uart_read_data(void)
+{
+
+}
+
+void bootlaoder_uart_jump_to_user_app(void)
+{
+	//function to hold the address of reset handler of the3 user app
+	void (*app_reset_handler)(void);
+
+	// configure MSP by reading the value from the base addrress of sector 2
+	uint32_t msp_value =  *(volatile uint32_t *)FLASH_SECTOR2_BASE_ADDRESS;
+
+	//The function comes from CMSIS
+	__set_MSP(msp_value);
+
+	//Fetching the reset handler address of user application fro the location (FLASH_SECTOR2_BASE_ADDRESS + 4)
+	uint32_t resethandler_address =  *(volatile uint32_t *)(FLASH_SECTOR2_BASE_ADDRESS);
+
+	app_reset_handler = (void*) resethandler_address;
+
+	app_reset_handler();
+}
 
 /* USER CODE END PFP */
 
@@ -116,10 +139,12 @@ int main(void)
   if(HAL_GPIO_ReadPin(KEY_BUTTON_GPIO_PORT,USER_BUTTON_PIN) == GPIO_PIN_RESET)
   {
 	  HAL_UART_Transmit(&huart2,(uint8_t*)Selectedbootloader,sizeof(Selectedbootloader),HAL_MAX_DELAY);
+	  bootlader_uart_read_data();
   }
   else
   {
 	  HAL_UART_Transmit(&huart2,(uint8_t*)SelectedApplication,sizeof(SelectedApplication),HAL_MAX_DELAY);
+	  bootlaoder_uart_jump_to_user_app();
   }
   while (1)
   {
