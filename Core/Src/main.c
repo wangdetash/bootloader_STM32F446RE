@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <string.h>
 
 /* USER CODE END Includes */
 
@@ -31,6 +32,19 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+/* Command codes from Bootloader Commands.pdf. */
+#define BL_GET_VER              0x51U
+#define BL_GET_HELP             0x52U
+#define BL_GET_CID              0x53U
+#define BL_GET_RDP_STATUS       0x54U
+#define BL_GO_TO_ADDR           0x55U
+#define BL_FLASH_ERASE          0x56U
+#define BL_MEM_WRITE            0x57U
+#define BL_EN_R_W_PROTECT       0x58U
+#define BL_MEM_READ             0x59U
+#define BL_READ_SECTOR_STATUS   0x5AU
+#define BL_OTP_READ             0x5BU
+#define BL_DIS_R_W_PROTECT      0x5CU
 
 /* USER CODE END PD */
 
@@ -48,6 +62,7 @@ UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
+uint8_t bl_rx_buffer[256];
 
 /* USER CODE END PV */
 
@@ -60,7 +75,84 @@ static void MX_CRC_Init(void);
 /* USER CODE BEGIN PFP */
 void bootlader_uart_read_data(void)
 {
+  uint8_t rcv_len;
 
+  while (1)
+  {
+    memset(bl_rx_buffer, 0, sizeof(bl_rx_buffer));
+
+    /* Read the number of bytes that follow the length byte. */
+    if (HAL_UART_Receive(&huart3, bl_rx_buffer, 1, HAL_MAX_DELAY) != HAL_OK)
+    {
+      continue;
+    }
+    rcv_len = bl_rx_buffer[0];
+
+    /* Keep the length at index 0 and receive the payload after it. */
+    if (rcv_len > 0)
+    {
+      if (HAL_UART_Receive(&huart3, &bl_rx_buffer[1], rcv_len, HAL_MAX_DELAY) != HAL_OK)
+      {
+        continue;
+      }
+
+      /* The second byte contains the command code. */
+      switch (bl_rx_buffer[1])
+      {
+        case BL_GET_VER:
+          /* TODO: Return the bootloader version. */
+          break;
+
+        case BL_GET_HELP:
+          /* TODO: Return the supported command codes. */
+          break;
+
+        case BL_GET_CID:
+          /* TODO: Return the chip ID. */
+          break;
+
+        case BL_GET_RDP_STATUS:
+          /* TODO: Return the read protection status. */
+          break;
+
+        case BL_GO_TO_ADDR:
+          /* TODO: Jump to the requested address. */
+          break;
+
+        case BL_FLASH_ERASE:
+          /* TODO: Erase the requested flash sectors. */
+          break;
+
+        case BL_MEM_WRITE:
+          /* TODO: Write the supplied data to memory. */
+          break;
+
+        case BL_EN_R_W_PROTECT:
+          /* TODO: Enable read/write protection. */
+          break;
+
+        case BL_MEM_READ:
+          /* TODO: Read the requested memory. */
+          break;
+
+        case BL_READ_SECTOR_STATUS:
+          /* TODO: Return the sector protection status. */
+          break;
+
+        case BL_OTP_READ:
+          /* TODO: Read the requested OTP data. */
+          break;
+
+        case BL_DIS_R_W_PROTECT:
+          /* TODO: Disable read/write protection. */
+          break;
+
+        default:
+          /* Unknown command: ignore this packet. */
+          break;
+      }
+    }
+  }
 }
 
 void bootlaoder_uart_jump_to_user_app(void)
