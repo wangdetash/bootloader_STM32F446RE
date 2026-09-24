@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <string.h>
+#include <stdio.h>
 
 /* USER CODE END Includes */
 
@@ -32,25 +33,15 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-/* Command codes from Bootloader Commands.pdf. */
-#define BL_GET_VER              0x51U
-#define BL_GET_HELP             0x52U
-#define BL_GET_CID              0x53U
-#define BL_GET_RDP_STATUS       0x54U
-#define BL_GO_TO_ADDR           0x55U
-#define BL_FLASH_ERASE          0x56U
-#define BL_MEM_WRITE            0x57U
-#define BL_EN_R_W_PROTECT       0x58U
-#define BL_MEM_READ             0x59U
-#define BL_READ_SECTOR_STATUS   0x5AU
-#define BL_OTP_READ             0x5BU
-#define BL_DIS_R_W_PROTECT      0x5CU
+
 
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 
 /* USER CODE BEGIN PM */
+#define D_UART (&huart3)
+#define C_UART (&huart2)
 
 /* USER CODE END PM */
 
@@ -73,107 +64,21 @@ static void MX_USART2_UART_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_CRC_Init(void);
 /* USER CODE BEGIN PFP */
-void bootlader_uart_read_data(void)
-{
-  uint8_t rcv_len;
 
-  while (1)
-  {
-    memset(bl_rx_buffer, 0, sizeof(bl_rx_buffer));
-
-    /* Read the number of bytes that follow the length byte. */
-    if (HAL_UART_Receive(&huart3, bl_rx_buffer, 1, HAL_MAX_DELAY) != HAL_OK)
-    {
-      continue;
-    }
-    rcv_len = bl_rx_buffer[0];
-
-    /* Keep the length at index 0 and receive the payload after it. */
-    if (rcv_len > 0)
-    {
-      if (HAL_UART_Receive(&huart3, &bl_rx_buffer[1], rcv_len, HAL_MAX_DELAY) != HAL_OK)
-      {
-        continue;
-      }
-
-      /* The second byte contains the command code. */
-      switch (bl_rx_buffer[1])
-      {
-        case BL_GET_VER:
-          /* TODO: Return the bootloader version. */
-          break;
-
-        case BL_GET_HELP:
-          /* TODO: Return the supported command codes. */
-          break;
-
-        case BL_GET_CID:
-          /* TODO: Return the chip ID. */
-          break;
-
-        case BL_GET_RDP_STATUS:
-          /* TODO: Return the read protection status. */
-          break;
-
-        case BL_GO_TO_ADDR:
-          /* TODO: Jump to the requested address. */
-          break;
-
-        case BL_FLASH_ERASE:
-          /* TODO: Erase the requested flash sectors. */
-          break;
-
-        case BL_MEM_WRITE:
-          /* TODO: Write the supplied data to memory. */
-          break;
-
-        case BL_EN_R_W_PROTECT:
-          /* TODO: Enable read/write protection. */
-          break;
-
-        case BL_MEM_READ:
-          /* TODO: Read the requested memory. */
-          break;
-
-        case BL_READ_SECTOR_STATUS:
-          /* TODO: Return the sector protection status. */
-          break;
-
-        case BL_OTP_READ:
-          /* TODO: Read the requested OTP data. */
-          break;
-
-        case BL_DIS_R_W_PROTECT:
-          /* TODO: Disable read/write protection. */
-          break;
-
-        default:
-          /* Unknown command: ignore this packet. */
-          break;
-      }
-    }
-  }
-}
-
-void bootlaoder_uart_jump_to_user_app(void)
-{
-	//function to hold the address of reset handler of the3 user app
-	void (*app_reset_handler)(void);
-
-	// configure MSP by reading the value from the base addrress of sector 2
-	uint32_t msp_value =  *(volatile uint32_t *)FLASH_SECTOR2_BASE_ADDRESS;
-
-	//The function comes from CMSIS
-	__set_MSP(msp_value);
-
-	//Fetching the reset handler address of user application fro the location (FLASH_SECTOR2_BASE_ADDRESS + 4)
-	uint32_t resethandler_address =  *(volatile uint32_t *)(FLASH_SECTOR2_BASE_ADDRESS);
-
-	app_reset_handler = (void*) resethandler_address;
-
-	app_reset_handler();
-}
-
+void printmsg(const char *message);
+void bootlader_uart_read_data(void);
+void bootlaoder_uart_jump_to_user_app(void);
+void bootloader_handle_getver_cmd(uint8_t *bl_rx_buffer);
+void bootloader_handle_gethelp_cmd(uint8_t *bl_rx_buffer);
+void bootloader_handle_getcid_cmd(uint8_t *bl_rx_buffer);
+void bootloader_handle_getrdp_cmd(uint8_t *bl_rx_buffer);
+void bootloader_handle_go_cmd(uint8_t *bl_rx_buffer);
+void bootloader_handle_flash_erase_cmd(uint8_t *bl_rx_buffer);
+void bootloader_handle_mem_write_cmd(uint8_t *bl_rx_buffer);
+void bootloader_handle_endis_rw_protect(uint8_t *bl_rx_buffer);
+void bootloader_handle_mem_read(uint8_t *bl_rx_buffer);
+void bootloader_handle_read_sector_status(uint8_t *bl_rx_buffer);
+void bootloader_handle_read_otp(uint8_t *bl_rx_buffer);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -230,20 +135,21 @@ int main(void)
   /*check whether the button is pressed or not*/
   if(HAL_GPIO_ReadPin(KEY_BUTTON_GPIO_PORT,USER_BUTTON_PIN) == GPIO_PIN_RESET)
   {
-	  HAL_UART_Transmit(&huart2,(uint8_t*)Selectedbootloader,sizeof(Selectedbootloader),HAL_MAX_DELAY);
+	  printmsg(Selectedbootloader);
 	  bootlader_uart_read_data();
   }
   else
   {
-	  HAL_UART_Transmit(&huart2,(uint8_t*)SelectedApplication,sizeof(SelectedApplication),HAL_MAX_DELAY);
+	  printmsg(SelectedApplication);
 	  bootlaoder_uart_jump_to_user_app();
   }
   while (1)
   {
 
-	  HAL_UART_Transmit(&huart3,(uint8_t*)InWhileLoop,sizeof(InWhileLoop),HAL_MAX_DELAY);
-	  uint32_t current_tick = HAL_GetTick();
-	  while(HAL_GetTick() <= (current_tick + 1000));
+	  printmsg(InWhileLoop);
+//	  uint32_t current_tick = HAL_GetTick();
+//	  while(HAL_GetTick() <= (current_tick + 1000));
+	  HAL_Delay(1000);
     /* USER CODE END WHILE */
 
 
@@ -415,6 +321,382 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/**
+  * @brief Send a null-terminated message through the debug UART.
+  */
+void printmsg(const char *message)
+{
+  HAL_UART_Transmit(D_UART, (const uint8_t *)message,
+                    (uint16_t)strlen(message), HAL_MAX_DELAY);
+}
+
+
+/*
+ * Provisional request: [length][command][arguments...][CRC32 LE].
+ * length counts all bytes after itself, including the CRC.
+ * Hardware CRC covers length, command and arguments (not the CRC), with
+ * each byte zero-extended to one 32-bit word, MSB first, no final XOR.
+ * len excludes the trailing host CRC bytes.
+ */
+uint8_t bootloader_verify_crc(uint8_t *p_data, uint8_t len, uint32_t crc_host)
+{
+  uint32_t uwCRCvalue = 0xFFU;
+
+  if (p_data == NULL || len == 0U)
+  {
+    return VERIFY_CRC_FAILURE;
+  }
+
+  __HAL_CRC_DR_RESET(&hcrc);
+  for (uint16_t i = 0U; i < len; ++i)
+  {
+    uint32_t data_word = p_data[i];
+    uwCRCvalue = HAL_CRC_Accumulate(&hcrc, &data_word, 1U);
+  }
+
+  return (uwCRCvalue == crc_host) ? VERIFY_CRC_SUCCESS : VERIFY_CRC_FAILURE;
+}
+
+/* Validate framing before extracting the host CRC or narrowing the data length. */
+static uint8_t bootloader_verify_packet(uint8_t *packet)
+{
+  if (packet == NULL)
+  {
+	  printmsg("#1");
+    return VERIFY_CRC_FAILURE;
+  }
+
+  uint16_t packet_len = (uint16_t)packet[0] + 1U;
+  if (packet_len < BL_MIN_PACKET_SIZE || packet_len > sizeof(bl_rx_buffer))
+  {
+	  printmsg("#2");
+    return VERIFY_CRC_FAILURE;
+  }
+
+  uint16_t data_len = packet_len - BL_CRC_SIZE;
+  uint32_t host_crc = (uint32_t)packet[data_len] |
+                      ((uint32_t)packet[data_len + 1U] << 8U) |
+                      ((uint32_t)packet[data_len + 2U] << 16U) |
+                      ((uint32_t)packet[data_len + 3U] << 24U);
+  /* A maximum 256-byte packet contains only 252 bytes covered by the CRC. */
+  printmsg("#3");
+  return bootloader_verify_crc(packet, (uint8_t)data_len, host_crc);
+}
+
+HAL_StatusTypeDef bootloader_uart_write_data(const uint8_t *data, uint16_t length)
+{
+  if (data == NULL || length == 0U)
+  {
+    return HAL_ERROR;
+  }
+  return HAL_UART_Transmit(C_UART, data, length, HAL_MAX_DELAY);
+}
+
+HAL_StatusTypeDef bootloader_send_ack(uint8_t reply_len)
+{
+  const uint8_t ack[] = {BL_ACK, reply_len};
+  return bootloader_uart_write_data(ack, sizeof(ack));
+}
+
+HAL_StatusTypeDef bootloader_send_nack(void)
+{
+  const uint8_t nack = BL_NACK;
+  return bootloader_uart_write_data(&nack, sizeof(nack));
+}
+
+uint8_t get_bootloader_version(void)
+{
+  return BL_VERSION;
+}
+
+void bootloader_handle_getver_cmd(uint8_t *packet)
+{
+  if (bootloader_verify_packet(packet) != VERIFY_CRC_SUCCESS)
+  {
+    printmsg("GET_VER: invalid packet or CRC\r\n");
+    bootloader_send_nack();
+    return;
+  }
+  /* GET_VER has no command arguments. */
+  if ((uint16_t)packet[0] + 1U != BL_MIN_PACKET_SIZE)
+  {
+    printmsg("GET_VER: unexpected arguments\r\n");
+    bootloader_send_nack();
+    return;
+  }
+
+  if (bootloader_send_ack(1U) != HAL_OK)
+  {
+    return;
+  }
+  uint8_t bl_version = get_bootloader_version();
+  char message[40];
+  snprintf(message, sizeof(message), "Bootloader version: 0x%02X\r\n",
+           (unsigned int)bl_version);
+  printmsg(message);
+  bootloader_uart_write_data(&bl_version, sizeof(bl_version));
+}
+
+void bootloader_handle_gethelp_cmd(uint8_t *packet)
+{
+  if (bootloader_verify_packet(packet) != VERIFY_CRC_SUCCESS)
+  {
+    printmsg("GET_HELP: invalid packet or CRC\r\n");
+    bootloader_send_nack();
+    return;
+  }
+  /* ACK confirms receipt/CRC only; command execution remains a TODO. */
+  if (bootloader_send_ack(0U) != HAL_OK)
+  {
+    return;
+  }
+  printmsg("GET_HELP: handler not implemented\r\n");
+}
+
+void bootloader_handle_getcid_cmd(uint8_t *packet)
+{
+  if (bootloader_verify_packet(packet) != VERIFY_CRC_SUCCESS)
+  {
+    printmsg("GET_CID: invalid packet or CRC\r\n");
+    bootloader_send_nack();
+    return;
+  }
+  /* ACK confirms receipt/CRC only; command execution remains a TODO. */
+  if (bootloader_send_ack(0U) != HAL_OK)
+  {
+    return;
+  }
+  printmsg("GET_CID: handler not implemented\r\n");
+}
+
+void bootloader_handle_getrdp_cmd(uint8_t *packet)
+{
+  if (bootloader_verify_packet(packet) != VERIFY_CRC_SUCCESS)
+  {
+    printmsg("GET_RDP_STATUS: invalid packet or CRC\r\n");
+    bootloader_send_nack();
+    return;
+  }
+  /* ACK confirms receipt/CRC only; command execution remains a TODO. */
+  if (bootloader_send_ack(0U) != HAL_OK)
+  {
+    return;
+  }
+  printmsg("GET_RDP_STATUS: handler not implemented\r\n");
+}
+
+void bootloader_handle_go_cmd(uint8_t *packet)
+{
+  if (bootloader_verify_packet(packet) != VERIFY_CRC_SUCCESS)
+  {
+    printmsg("GO_TO_ADDR: invalid packet or CRC\r\n");
+    bootloader_send_nack();
+    return;
+  }
+  /* ACK confirms receipt/CRC only; command execution remains a TODO. */
+  if (bootloader_send_ack(0U) != HAL_OK)
+  {
+    return;
+  }
+  printmsg("GO_TO_ADDR: handler not implemented\r\n");
+}
+
+void bootloader_handle_flash_erase_cmd(uint8_t *packet)
+{
+  if (bootloader_verify_packet(packet) != VERIFY_CRC_SUCCESS)
+  {
+    printmsg("FLASH_ERASE: invalid packet or CRC\r\n");
+    bootloader_send_nack();
+    return;
+  }
+  /* ACK confirms receipt/CRC only; command execution remains a TODO. */
+  if (bootloader_send_ack(0U) != HAL_OK)
+  {
+    return;
+  }
+  printmsg("FLASH_ERASE: handler not implemented\r\n");
+}
+
+void bootloader_handle_mem_write_cmd(uint8_t *packet)
+{
+  if (bootloader_verify_packet(packet) != VERIFY_CRC_SUCCESS)
+  {
+    printmsg("MEM_WRITE: invalid packet or CRC\r\n");
+    bootloader_send_nack();
+    return;
+  }
+  /* ACK confirms receipt/CRC only; command execution remains a TODO. */
+  if (bootloader_send_ack(0U) != HAL_OK)
+  {
+    return;
+  }
+  printmsg("MEM_WRITE: handler not implemented\r\n");
+}
+
+void bootloader_handle_endis_rw_protect(uint8_t *packet)
+{
+  if (bootloader_verify_packet(packet) != VERIFY_CRC_SUCCESS)
+  {
+    printmsg("EN/DIS_R_W_PROTECT: invalid packet or CRC\r\n");
+    bootloader_send_nack();
+    return;
+  }
+  /* ACK confirms receipt/CRC only; command execution remains a TODO. */
+  if (bootloader_send_ack(0U) != HAL_OK)
+  {
+    return;
+  }
+  printmsg("EN/DIS_R_W_PROTECT: handler not implemented\r\n");
+}
+
+void bootloader_handle_mem_read(uint8_t *packet)
+{
+  if (bootloader_verify_packet(packet) != VERIFY_CRC_SUCCESS)
+  {
+    printmsg("MEM_READ: invalid packet or CRC\r\n");
+    bootloader_send_nack();
+    return;
+  }
+  /* ACK confirms receipt/CRC only; command execution remains a TODO. */
+  if (bootloader_send_ack(0U) != HAL_OK)
+  {
+    return;
+  }
+  printmsg("MEM_READ: handler not implemented\r\n");
+}
+
+void bootloader_handle_read_sector_status(uint8_t *packet)
+{
+  if (bootloader_verify_packet(packet) != VERIFY_CRC_SUCCESS)
+  {
+    printmsg("READ_SECTOR_STATUS: invalid packet or CRC\r\n");
+    bootloader_send_nack();
+    return;
+  }
+  /* ACK confirms receipt/CRC only; command execution remains a TODO. */
+  if (bootloader_send_ack(0U) != HAL_OK)
+  {
+    return;
+  }
+  printmsg("READ_SECTOR_STATUS: handler not implemented\r\n");
+}
+
+void bootloader_handle_read_otp(uint8_t *packet)
+{
+  if (bootloader_verify_packet(packet) != VERIFY_CRC_SUCCESS)
+  {
+    printmsg("OTP_READ: invalid packet or CRC\r\n");
+    bootloader_send_nack();
+    return;
+  }
+  /* ACK confirms receipt/CRC only; command execution remains a TODO. */
+  if (bootloader_send_ack(0U) != HAL_OK)
+  {
+    return;
+  }
+  printmsg("OTP_READ: handler not implemented\r\n");
+}
+
+void bootlader_uart_read_data(void)
+{
+  uint8_t rcv_len;
+
+  while (1)
+  {
+    memset(bl_rx_buffer, 0, sizeof(bl_rx_buffer));
+
+    /* Read the number of bytes that follow the length byte. */
+    if (HAL_UART_Receive(C_UART, bl_rx_buffer, 1, HAL_MAX_DELAY) != HAL_OK)
+    {
+      continue;
+    }
+    rcv_len = bl_rx_buffer[0];
+
+    /* Keep the length at index 0 and receive the payload after it. */
+    if (rcv_len > 0)
+    {
+      if (HAL_UART_Receive(C_UART, &bl_rx_buffer[1], rcv_len, HAL_MAX_DELAY) != HAL_OK)
+      {
+        continue;
+      }
+
+      /* The second byte contains the command code. */
+      switch (bl_rx_buffer[1])
+      {
+        case BL_GET_VER:
+          bootloader_handle_getver_cmd(bl_rx_buffer);
+          break;
+
+        case BL_GET_HELP:
+          bootloader_handle_gethelp_cmd(bl_rx_buffer);
+          break;
+
+        case BL_GET_CID:
+          bootloader_handle_getcid_cmd(bl_rx_buffer);
+          break;
+
+        case BL_GET_RDP_STATUS:
+          bootloader_handle_getrdp_cmd(bl_rx_buffer);
+          break;
+
+        case BL_GO_TO_ADDR:
+          bootloader_handle_go_cmd(bl_rx_buffer);
+          break;
+
+        case BL_FLASH_ERASE:
+          bootloader_handle_flash_erase_cmd(bl_rx_buffer);
+          break;
+
+        case BL_MEM_WRITE:
+          bootloader_handle_mem_write_cmd(bl_rx_buffer);
+          break;
+
+        case BL_EN_R_W_PROTECT:
+          bootloader_handle_endis_rw_protect(bl_rx_buffer);
+          break;
+
+        case BL_MEM_READ:
+          bootloader_handle_mem_read(bl_rx_buffer);
+          break;
+
+        case BL_READ_SECTOR_STATUS:
+          bootloader_handle_read_sector_status(bl_rx_buffer);
+          break;
+
+        case BL_OTP_READ:
+          bootloader_handle_read_otp(bl_rx_buffer);
+          break;
+
+        case BL_DIS_R_W_PROTECT:
+          bootloader_handle_endis_rw_protect(bl_rx_buffer);
+          break;
+
+        default:
+          printmsg("Invalid command recieved from the host\r\n");
+          break;
+      }
+    }
+  }
+}
+
+void bootlaoder_uart_jump_to_user_app(void)
+{
+	//function to hold the address of reset handler of the3 user app
+	void (*app_reset_handler)(void);
+
+	// configure MSP by reading the value from the base addrress of sector 2
+	uint32_t msp_value =  *(volatile uint32_t *)FLASH_SECTOR2_BASE_ADDRESS;
+
+	//The function comes from CMSIS
+	__set_MSP(msp_value);
+
+	//Fetching the reset handler address of user application fro the location (FLASH_SECTOR2_BASE_ADDRESS + 4)
+	uint32_t resethandler_address =  *(volatile uint32_t *)(FLASH_SECTOR2_BASE_ADDRESS);
+
+	app_reset_handler = (void*) resethandler_address;
+
+	app_reset_handler();
+}
 
 /* USER CODE END 4 */
 
