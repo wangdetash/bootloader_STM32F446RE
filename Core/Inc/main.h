@@ -62,6 +62,7 @@ uint8_t bootloader_verify_crc(uint8_t *p_data, uint8_t len, uint32_t crc_host);
 HAL_StatusTypeDef bootloader_send_ack(uint8_t reply_len);
 HAL_StatusTypeDef bootloader_send_nack(void);
 uint8_t get_bootloader_version(void);
+uint8_t verify_address(uint32_t go_address);
 HAL_StatusTypeDef bootloader_uart_write_data(const uint8_t *data, uint16_t length);
 /* USER CODE END EFP */
 
@@ -88,6 +89,22 @@ HAL_StatusTypeDef bootloader_uart_write_data(const uint8_t *data, uint16_t lengt
 #define BL_MIN_PACKET_SIZE      6U
 #define VERIFY_CRC_SUCCESS      0U
 #define VERIFY_CRC_FAILURE      1U
+#define ADD_VALID               0U
+#define ADD_INVALID             1U
+
+/* STM32F446 address ranges used by the GO_TO_ADDR command. */
+#define SYSTEM_MEMORY_BASE_ADDRESS  0x1FFF0000U
+#define SYSTEM_MEMORY_END_ADDRESS   0x1FFF7A0FU
+#define SRAM1_SIZE                  (112U * 1024U)
+#define SRAM1_END                   (SRAM1_BASE + SRAM1_SIZE)
+#define SRAM2_SIZE                  (16U * 1024U)
+#define SRAM2_END                   (SRAM2_BASE + SRAM2_SIZE)
+#define FLASH_SIZE                  (512U * 1024U)
+#define BKPSRAM_SIZE                (4U * 1024U)
+#define BKPSRAM_END                 (BKPSRAM_BASE + BKPSRAM_SIZE)
+#define PERIPHERAL_MEMORY_END_ADDRESS 0x5FFFFFFFU
+#define EXTERNAL_MEMORY_BASE_ADDRESS  0x60000000U
+#define EXTERNAL_MEMORY_END_ADDRESS   0xDFFFFFFFU
 
 /* Command codes from Bootloader Commands.pdf. */
 #define BL_GET_VER              0x51U

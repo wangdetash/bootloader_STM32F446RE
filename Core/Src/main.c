@@ -54,6 +54,20 @@ UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
 uint8_t bl_rx_buffer[256];
+const uint8_t supported_commands[] = {
+  BL_GET_VER,
+  BL_GET_HELP,
+  BL_GET_CID,
+  BL_GET_RDP_STATUS,
+  BL_GO_TO_ADDR,
+  BL_FLASH_ERASE,
+  BL_MEM_WRITE,
+  BL_EN_R_W_PROTECT,
+  BL_MEM_READ,
+  BL_READ_SECTOR_STATUS,
+  BL_OTP_READ,
+  BL_DIS_R_W_PROTECT
+};
 
 /* USER CODE END PV */
 
@@ -66,6 +80,9 @@ static void MX_CRC_Init(void);
 /* USER CODE BEGIN PFP */
 
 void printmsg(const char *message);
+uint16_t get_mcu_chip_id(void);
+uint8_t get_flashrdp_level(void);
+uint8_t verify_address(uint32_t go_address);
 void bootlader_uart_read_data(void);
 void bootlaoder_uart_jump_to_user_app(void);
 void bootloader_handle_getver_cmd(uint8_t *bl_rx_buffer);
@@ -362,14 +379,12 @@ static uint8_t bootloader_verify_packet(uint8_t *packet)
 {
   if (packet == NULL)
   {
-	  printmsg("#1");
     return VERIFY_CRC_FAILURE;
   }
 
   uint16_t packet_len = (uint16_t)packet[0] + 1U;
   if (packet_len < BL_MIN_PACKET_SIZE || packet_len > sizeof(bl_rx_buffer))
   {
-	  printmsg("#2");
     return VERIFY_CRC_FAILURE;
   }
 
@@ -379,7 +394,6 @@ static uint8_t bootloader_verify_packet(uint8_t *packet)
                       ((uint32_t)packet[data_len + 2U] << 16U) |
                       ((uint32_t)packet[data_len + 3U] << 24U);
   /* A maximum 256-byte packet contains only 252 bytes covered by the CRC. */
-  printmsg("#3");
   return bootloader_verify_crc(packet, (uint8_t)data_len, host_crc);
 }
 
@@ -407,6 +421,61 @@ HAL_StatusTypeDef bootloader_send_nack(void)
 uint8_t get_bootloader_version(void)
 {
   return BL_VERSION;
+}
+
+uint16_t get_mcu_chip_id(void)
+{
+  return (uint16_t)(DBGMCU->IDCODE & DBGMCU_IDCODE_DEV_ID);
+}
+
+uint8_t get_flashrdp_level(void)
+{
+  uint8_t rdp_status = (uint8_t)((FLASH->OPTCR >> 8U) & 0xFFU);
+  return rdp_status;
+}
+
+uint8_t verify_address(uint32_t go_address)
+{
+  if ((go_address >= FLASH_BASE) && (go_address <= FLASH_END))
+  {
+    return ADD_VALID;
+  }
+
+  if ((go_address >= SYSTEM_MEMORY_BASE_ADDRESS) &&
+      (go_address <= SYSTEM_MEMORY_END_ADDRESS))
+  {
+    return ADD_VALID;
+  }
+
+  if ((go_address >= SRAM1_BASE) && (go_address < SRAM1_END))
+  {
+    return ADD_VALID;
+  }
+
+  if ((go_address >= SRAM2_BASE) && (go_address < SRAM2_END))
+  {
+    return ADD_VALID;
+  }
+
+  /* Check backup SRAM before the peripheral region, which contains it. */
+  if ((go_address >= BKPSRAM_BASE) && (go_address < BKPSRAM_END))
+  {
+    return ADD_VALID;
+  }
+
+  if ((go_address >= PERIPH_BASE) &&
+      (go_address <= PERIPHERAL_MEMORY_END_ADDRESS))
+  {
+    return ADD_INVALID;
+  }
+
+  if ((go_address >= EXTERNAL_MEMORY_BASE_ADDRESS) &&
+      (go_address <= EXTERNAL_MEMORY_END_ADDRESS))
+  {
+    return ADD_VALID;
+  }
+
+  return ADD_INVALID;
 }
 
 void bootloader_handle_getver_cmd(uint8_t *packet)
@@ -445,12 +514,21 @@ void bootloader_handle_gethelp_cmd(uint8_t *packet)
     bootloader_send_nack();
     return;
   }
-  /* ACK confirms receipt/CRC only; command execution remains a TODO. */
-  if (bootloader_send_ack(0U) != HAL_OK)
+  /* GET_HELP has no command arguments. */
+  if ((uint16_t)packet[0] + 1U != BL_MIN_PACKET_SIZE)
+  {
+    printmsg("GET_HELP: unexpected arguments\r\n");
+    bootloader_send_nack();
+    return;
+  }
+
+  uint8_t command_count = (uint8_t)sizeof(supported_commands);
+  if (bootloader_send_ack(command_count) != HAL_OK)
   {
     return;
   }
-  printmsg("GET_HELP: handler not implemented\r\n");
+  printmsg("GET_HELP: sending supported commands\r\n");
+  bootloader_uart_write_data(supported_commands, command_count);
 }
 
 void bootloader_handle_getcid_cmd(uint8_t *packet)
@@ -461,12 +539,22 @@ void bootloader_handle_getcid_cmd(uint8_t *packet)
     bootloader_send_nack();
     return;
   }
-  /* ACK confirms receipt/CRC only; command execution remains a TODO. */
-  if (bootloader_send_ack(0U) != HAL_OK)
+  /* GET_CID has no command arguments. */
+  if ((uint16_t)packet[0] + 1U != BL_MIN_PACKET_SIZE)
+  {
+    printmsg("GET_CID: unexpected arguments\r\n");
+    bootloader_send_nack();
+    return;
+  }
+
+  uint16_t bl_cid_num = get_mcu_chip_id();
+  if (bootloader_send_ack((uint8_t)sizeof(bl_cid_num)) != HAL_OK)
   {
     return;
   }
-  printmsg("GET_CID: handler not implemented\r\n");
+  printmsg("GET_CID: sending MCU chip ID\r\n");
+  bootloader_uart_write_data((const uint8_t *)&bl_cid_num,
+                             (uint16_t)sizeof(bl_cid_num));
 }
 
 void bootloader_handle_getrdp_cmd(uint8_t *packet)
@@ -477,12 +565,21 @@ void bootloader_handle_getrdp_cmd(uint8_t *packet)
     bootloader_send_nack();
     return;
   }
-  /* ACK confirms receipt/CRC only; command execution remains a TODO. */
-  if (bootloader_send_ack(0U) != HAL_OK)
+  /* GET_RDP_STATUS has no command arguments. */
+  if ((uint16_t)packet[0] + 1U != BL_MIN_PACKET_SIZE)
+  {
+    printmsg("GET_RDP_STATUS: unexpected arguments\r\n");
+    bootloader_send_nack();
+    return;
+  }
+
+  uint8_t rdp_status = get_flashrdp_level();
+  if (bootloader_send_ack((uint8_t)sizeof(rdp_status)) != HAL_OK)
   {
     return;
   }
-  printmsg("GET_RDP_STATUS: handler not implemented\r\n");
+  printmsg("GET_RDP_STATUS: sending RDP option byte\r\n");
+  bootloader_uart_write_data(&rdp_status, (uint16_t)sizeof(rdp_status));
 }
 
 void bootloader_handle_go_cmd(uint8_t *packet)
@@ -493,12 +590,52 @@ void bootloader_handle_go_cmd(uint8_t *packet)
     bootloader_send_nack();
     return;
   }
-  /* ACK confirms receipt/CRC only; command execution remains a TODO. */
-  if (bootloader_send_ack(0U) != HAL_OK)
+
+  /* GO_TO_ADDR carries exactly one 32-bit address argument. */
+  if ((uint16_t)packet[0] + 1U !=
+      (BL_MIN_PACKET_SIZE + (uint16_t)sizeof(uint32_t)))
+  {
+    printmsg("GO_TO_ADDR: invalid packet length\r\n");
+    bootloader_send_nack();
+    return;
+  }
+
+  if (bootloader_send_ack(1U) != HAL_OK)
   {
     return;
   }
-  printmsg("GO_TO_ADDR: handler not implemented\r\n");
+
+  uint32_t go_address;
+  memcpy(&go_address, &packet[2], sizeof(go_address));
+
+  char message[64];
+  snprintf(message, sizeof(message), "GO_TO_ADDR: address 0x%08lX\r\n",
+           (unsigned long)go_address);
+  printmsg(message);
+
+  uint8_t address_status = verify_address(go_address);
+  if (bootloader_uart_write_data(&address_status, sizeof(address_status)) != HAL_OK)
+  {
+    return;
+  }
+
+  if (address_status == ADD_VALID)
+  {
+    printmsg("GO_TO_ADDR: address is valid\r\n");
+
+    /* Cortex-M function pointers must have the Thumb-state bit set. */
+    go_address += 1U;
+    void (*go_to_address)(void) = (void (*)(void))go_address;
+
+    snprintf(message, sizeof(message), "GO_TO_ADDR: going to 0x%08lX\r\n",
+             (unsigned long)go_address);
+    printmsg(message);
+    go_to_address();
+  }
+  else
+  {
+    printmsg("GO_TO_ADDR: address is invalid\r\n");
+  }
 }
 
 void bootloader_handle_flash_erase_cmd(uint8_t *packet)
@@ -691,7 +828,7 @@ void bootlaoder_uart_jump_to_user_app(void)
 	__set_MSP(msp_value);
 
 	//Fetching the reset handler address of user application fro the location (FLASH_SECTOR2_BASE_ADDRESS + 4)
-	uint32_t resethandler_address =  *(volatile uint32_t *)(FLASH_SECTOR2_BASE_ADDRESS);
+	uint32_t resethandler_address =  *(volatile uint32_t *)(FLASH_SECTOR2_BASE_ADDRESS + 4);
 
 	app_reset_handler = (void*) resethandler_address;
 

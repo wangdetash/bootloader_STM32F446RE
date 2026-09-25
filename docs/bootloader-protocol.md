@@ -13,7 +13,8 @@ chosen for this implementation, not taken from the command-reference PDF.
 `[length: 1 byte][command: 1 byte][arguments: optional][CRC: 4 bytes]`
 
 `length` counts every byte after itself, including the CRC. Total request size
-is 6 to 256 bytes. GET_VER requires exactly six bytes, with no arguments.
+is 6 to 256 bytes. GET_VER, GET_HELP, and GET_CID require exactly six bytes,
+with no arguments.
 
 CRC uses the STM32F446 hardware CRC peripheral via `HAL_CRC_Accumulate`. It covers
 the length, command, and arguments, excluding the four CRC bytes. Parameters:
@@ -42,6 +43,10 @@ and the old GET_VER packet `05 51 d8 87 c2 20` are no longer compatible.
 ## Responses
 
 - Valid GET_VER: `[0xA5][0x01][0x10]` (ACK, reply size, version).
+- Valid GET_HELP: `[0xA5][0x0C][0x51]...[0x5C]` (ACK, reply size, all 12
+  supported command codes).
+- Valid GET_CID on STM32F446: `[0xA5][0x02][0x21][0x04]` (ACK, reply size,
+  then the 16-bit device ID in target-native little-endian byte order).
 - Invalid CRC or malformed recognized request: `[0x7F]` (NACK only).
 - Valid CRC for other recognized commands: `[0xA5][0x00]`, plus a diagnostic
   saying that the handler is not implemented. ACK confirms receipt and CRC,
@@ -49,10 +54,15 @@ and the old GET_VER packet `05 51 d8 87 c2 20` are no longer compatible.
 - Unknown command: existing invalid-command diagnostic on D_UART, no binary
   response. Zero-length input is skipped before command dispatch.
 
-All 12 recognized commands reach a handler. Enable and disable protection share
-`bootloader_handle_endis_rw_protect()`. Every handler verifies the CRC before ACK.
-GET_VER then calls `get_bootloader_version()`, formats the version for
+All 12 recognized commands reach a handler and are stored in the global
+`supported_commands` array. Enable and disable protection share
+`bootloader_handle_endis_rw_protect()`. Every handler verifies the CRC before
+ACK. GET_VER then calls `get_bootloader_version()`, formats the version for
 `printmsg()`, and sends the version byte with `bootloader_uart_write_data()`.
+GET_HELP ACKs with the array size and sends the complete array.
+GET_CID reads the lower 12 DEV_ID bits from `DBGMCU->IDCODE` through
+`get_mcu_chip_id()`, stores the result in `bl_cid_num`, ACKs with a two-byte
+reply size, and sends that value.
 
 ## Host example and hardware checks
 
