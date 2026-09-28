@@ -91,6 +91,7 @@ void bootloader_handle_getcid_cmd(uint8_t *bl_rx_buffer);
 void bootloader_handle_getrdp_cmd(uint8_t *bl_rx_buffer);
 void bootloader_handle_go_cmd(uint8_t *bl_rx_buffer);
 void bootloader_handle_flash_erase_cmd(uint8_t *bl_rx_buffer);
+uint8_t execute_flash_erase(uint8_t sector_number, uint8_t number_of_sectors);
 void bootloader_handle_mem_write_cmd(uint8_t *bl_rx_buffer);
 void bootloader_handle_endis_rw_protect(uint8_t *bl_rx_buffer);
 void bootloader_handle_mem_read(uint8_t *bl_rx_buffer);
@@ -646,12 +647,78 @@ void bootloader_handle_flash_erase_cmd(uint8_t *packet)
     bootloader_send_nack();
     return;
   }
-  /* ACK confirms receipt/CRC only; command execution remains a TODO. */
-  if (bootloader_send_ack(0U) != HAL_OK)
+
+  /* FLASH_ERASE carries a sector number and the number of sectors to erase. */
+  if ((uint16_t)packet[0] + 1U !=
+      (BL_MIN_PACKET_SIZE + (2U * (uint16_t)sizeof(uint8_t))))
+  {
+    printmsg("FLASH_ERASE: invalid packet length\r\n");
+    bootloader_send_nack();
+    return;
+  }
+
+  uint8_t sector_number = packet[2];
+  uint8_t number_of_sectors = packet[3];
+
+  if (bootloader_send_ack(1U) != HAL_OK)
   {
     return;
   }
-  printmsg("FLASH_ERASE: handler not implemented\r\n");
+
+  BSP_LED_On(LED2);
+  uint8_t erase_status = execute_flash_erase(sector_number, number_of_sectors);
+  BSP_LED_Off(LED2);
+
+  bootloader_uart_write_data(&erase_status, sizeof(erase_status));
+}
+
+uint8_t execute_flash_erase(uint8_t sector_number, uint8_t number_of_sectors)
+{
+  FLASH_EraseInitTypeDef erase_config = {0};
+  uint32_t sector_error = 0xFFFFFFFFU;
+  HAL_StatusTypeDef erase_status;
+
+  if ((number_of_sectors < 1U) || (number_of_sectors > 7U))
+  {
+    return (uint8_t)HAL_ERROR;
+  }
+
+  if (sector_number == 0xFFU)
+  {
+    erase_config.TypeErase = FLASH_TYPEERASE_MASSERASE;
+  }
+  else
+  {
+    if ((sector_number > FLASH_SECTOR_7) ||
+        (((uint16_t)sector_number + (uint16_t)number_of_sectors) > 8U))
+    {
+      return (uint8_t)HAL_ERROR;
+    }
+
+    erase_config.TypeErase = FLASH_TYPEERASE_SECTORS;
+    erase_config.Sector = sector_number;
+    erase_config.NbSectors = number_of_sectors;
+  }
+
+  erase_config.Banks = FLASH_BANK_1;
+  erase_config.VoltageRange = FLASH_VOLTAGE_RANGE_3;
+
+  erase_status = HAL_FLASH_Unlock();
+  if (erase_status == HAL_OK)
+  {
+    erase_status = HAL_FLASHEx_Erase(&erase_config, &sector_error);
+    if ((erase_status == HAL_OK) && (sector_error != 0xFFFFFFFFU))
+    {
+      erase_status = HAL_ERROR;
+    }
+  }
+
+  if (HAL_FLASH_Lock() != HAL_OK)
+  {
+    erase_status = HAL_ERROR;
+  }
+
+  return (uint8_t)erase_status;
 }
 
 void bootloader_handle_mem_write_cmd(uint8_t *packet)
