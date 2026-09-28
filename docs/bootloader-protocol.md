@@ -48,7 +48,7 @@ and the old GET_VER packet `05 51 d8 87 c2 20` are no longer compatible.
 - Valid GET_CID on STM32F446: `[0xA5][0x02][0x21][0x04]` (ACK, reply size,
   then the 16-bit device ID in target-native little-endian byte order).
 - Invalid CRC or malformed recognized request: `[0x7F]` (NACK only).
-- Valid CRC for other recognized commands: `[0xA5][0x00]`, plus a diagnostic
+- Valid CRC for recognized commands that remain unimplemented: `[0xA5][0x00]`, plus a diagnostic
   saying that the handler is not implemented. ACK confirms receipt and CRC,
   not successful command execution. No version is returned by these handlers.
 - Unknown command: existing invalid-command diagnostic on D_UART, no binary
@@ -63,6 +63,19 @@ GET_HELP ACKs with the array size and sends the complete array.
 GET_CID reads the lower 12 DEV_ID bits from `DBGMCU->IDCODE` through
 `get_mcu_chip_id()`, stores the result in `bl_cid_num`, ACKs with a two-byte
 reply size, and sends that value.
+
+## Sector protection commands
+
+- Enable protection (`0x58`): `[0x07][0x58][sector bitmap][mode][CRC32 LE]`.
+- Disable all sector protection (`0x5C`): `[0x05][0x5C][CRC32 LE]`.
+- Response after a valid request: `[0xA5][0x01][HAL status]`.
+
+The sector bitmap uses bits 0 through 7 for the eight STM32F446RE flash
+sectors. Mode `1` enables write protection for the selected sectors. Mode `2`
+enables PCROP read/write protection for the selected sectors. Disable has no
+arguments and restores write-protection mode with every sector unprotected.
+The shared `configure_flash_sector_rw_protection()` helper returns the numeric
+`HAL_StatusTypeDef` value as its one-byte command status.
 
 ## Host example and hardware checks
 
@@ -87,6 +100,7 @@ A GET_VER request with extra arguments and a correctly recomputed CRC should
 also produce NACK. Test minimum/maximum packet lengths and back-to-back packets
 on hardware before relying on this transport.
 
-Hardware behavior has not been verified. Receives and writes still use
+Hardware behavior, including option-byte programming, has not been verified.
+Receives and writes still use
 `HAL_MAX_DELAY`; incomplete requests can block indefinitely. Other command
 operations and command-specific argument checks remain unimplemented.
