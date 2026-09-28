@@ -93,6 +93,7 @@ void bootloader_handle_go_cmd(uint8_t *bl_rx_buffer);
 void bootloader_handle_flash_erase_cmd(uint8_t *bl_rx_buffer);
 uint8_t execute_flash_erase(uint8_t sector_number, uint8_t number_of_sectors);
 void bootloader_handle_mem_write_cmd(uint8_t *bl_rx_buffer);
+uint8_t execute_mem_write(uint8_t *buffer, uint32_t mem_address, uint32_t length);
 void bootloader_handle_endis_rw_protect(uint8_t *bl_rx_buffer);
 void bootloader_handle_mem_read(uint8_t *bl_rx_buffer);
 void bootloader_handle_read_sector_status(uint8_t *bl_rx_buffer);
@@ -729,12 +730,82 @@ void bootloader_handle_mem_write_cmd(uint8_t *packet)
     bootloader_send_nack();
     return;
   }
-  /* ACK confirms receipt/CRC only; command execution remains a TODO. */
-  if (bootloader_send_ack(0U) != HAL_OK)
+
+  /* MEM_WRITE carries a 32-bit address, a one-byte payload length and data. */
+  if ((uint16_t)packet[0] + 1U <
+      (BL_MIN_PACKET_SIZE + (uint16_t)sizeof(uint32_t) +
+       (uint16_t)sizeof(uint8_t)))
+  {
+    printmsg("MEM_WRITE: invalid packet length\r\n");
+    bootloader_send_nack();
+    return;
+  }
+
+  uint8_t payload_length = packet[6];
+  uint16_t expected_packet_length = BL_MIN_PACKET_SIZE +
+                                    (uint16_t)sizeof(uint32_t) +
+                                    (uint16_t)sizeof(payload_length) +
+                                    (uint16_t)payload_length;
+  if (((uint16_t)packet[0] + 1U != expected_packet_length) ||
+      (payload_length == 0U))
+  {
+    printmsg("MEM_WRITE: invalid packet length\r\n");
+    bootloader_send_nack();
+    return;
+  }
+
+  if (bootloader_send_ack(1U) != HAL_OK)
   {
     return;
   }
-  printmsg("MEM_WRITE: handler not implemented\r\n");
+
+  uint32_t mem_address;
+  memcpy(&mem_address, &packet[2], sizeof(mem_address));
+
+  uint8_t write_status = ADD_INVALID;
+  if (verify_address(mem_address) == ADD_VALID)
+  {
+    BSP_LED_On(LED2);
+    write_status = execute_mem_write(&packet[7], mem_address, payload_length);
+    BSP_LED_Off(LED2);
+  }
+
+  bootloader_uart_write_data(&write_status, sizeof(write_status));
+}
+
+uint8_t execute_mem_write(uint8_t *buffer, uint32_t mem_address, uint32_t length)
+{
+  HAL_StatusTypeDef status = HAL_OK;
+
+  /* HAL_FLASH_Program is valid only when the complete write lies in flash. */
+  if ((buffer == NULL) || (length == 0U) ||
+      (mem_address < FLASH_BASE) || (mem_address > FLASH_END) ||
+      ((length - 1U) > (FLASH_END - mem_address)))
+  {
+    return (uint8_t)HAL_ERROR;
+  }
+
+  status = HAL_FLASH_Unlock();
+  if (status == HAL_OK)
+  {
+    for (uint32_t index = 0U; index < length; ++index)
+    {
+      status = HAL_FLASH_Program(FLASH_TYPEPROGRAM_BYTE,
+                                 mem_address + index,
+                                 buffer[index]);
+      if (status != HAL_OK)
+      {
+        break;
+      }
+    }
+  }
+
+  if (HAL_FLASH_Lock() != HAL_OK)
+  {
+    status = HAL_ERROR;
+  }
+
+  return (uint8_t)status;
 }
 
 void bootloader_handle_endis_rw_protect(uint8_t *packet)
