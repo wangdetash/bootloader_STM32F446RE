@@ -95,6 +95,9 @@ uint8_t execute_flash_erase(uint8_t sector_number, uint8_t number_of_sectors);
 void bootloader_handle_mem_write_cmd(uint8_t *bl_rx_buffer);
 uint8_t execute_mem_write(uint8_t *buffer, uint32_t mem_address, uint32_t length);
 void bootloader_handle_endis_rw_protect(uint8_t *bl_rx_buffer);
+uint8_t configure_flash_sector_rw_protection(uint8_t sector_details,
+                                             uint8_t protection_mode,
+                                             uint8_t disable);
 void bootloader_handle_mem_read(uint8_t *bl_rx_buffer);
 void bootloader_handle_read_sector_status(uint8_t *bl_rx_buffer);
 void bootloader_handle_read_otp(uint8_t *bl_rx_buffer);
@@ -816,12 +819,129 @@ void bootloader_handle_endis_rw_protect(uint8_t *packet)
     bootloader_send_nack();
     return;
   }
-  /* ACK confirms receipt/CRC only; command execution remains a TODO. */
-  if (bootloader_send_ack(0U) != HAL_OK)
+
+  uint8_t sector_details = 0U;
+  uint8_t protection_mode = 0U;
+  uint8_t disable = 0U;
+
+  if (packet[1] == BL_EN_R_W_PROTECT)
+  {
+    /* Enable carries a sector bitmap and a protection mode. */
+    if ((uint16_t)packet[0] + 1U !=
+        (BL_MIN_PACKET_SIZE + (2U * (uint16_t)sizeof(uint8_t))))
+    {
+      printmsg("EN_R_W_PROTECT: invalid packet length\r\n");
+      bootloader_send_nack();
+      return;
+    }
+
+    sector_details = packet[2];
+    protection_mode = packet[3];
+  }
+  else if (packet[1] == BL_DIS_R_W_PROTECT)
+  {
+    /* Disable has no arguments; the helper ignores its first two parameters. */
+    if ((uint16_t)packet[0] + 1U != BL_MIN_PACKET_SIZE)
+    {
+      printmsg("DIS_R_W_PROTECT: invalid packet length\r\n");
+      bootloader_send_nack();
+      return;
+    }
+
+    disable = FLASH_PROTECTION_DISABLE;
+  }
+  else
+  {
+    bootloader_send_nack();
+    return;
+  }
+
+  if (bootloader_send_ack(1U) != HAL_OK)
   {
     return;
   }
-  printmsg("EN/DIS_R_W_PROTECT: handler not implemented\r\n");
+
+  uint8_t protection_status = configure_flash_sector_rw_protection(
+      sector_details, protection_mode, disable);
+  bootloader_uart_write_data(&protection_status, sizeof(protection_status));
+}
+
+uint8_t configure_flash_sector_rw_protection(uint8_t sector_details,
+                                             uint8_t protection_mode,
+                                             uint8_t disable)
+{
+  HAL_StatusTypeDef status;
+  uint32_t option_value;
+  const uint32_t error_flags = FLASH_FLAG_OPERR | FLASH_FLAG_WRPERR |
+                               FLASH_FLAG_PGAERR | FLASH_FLAG_PGPERR |
+                               FLASH_FLAG_PGSERR | FLASH_FLAG_RDERR;
+
+  if ((disable != FLASH_PROTECTION_DISABLE) &&
+      ((sector_details == 0U) ||
+       ((protection_mode != FLASH_PROTECTION_WRITE) &&
+        (protection_mode != FLASH_PROTECTION_READ_WRITE))))
+  {
+    return (uint8_t)HAL_ERROR;
+  }
+
+  status = HAL_FLASH_OB_Unlock();
+  if (status != HAL_OK)
+  {
+    return (uint8_t)status;
+  }
+
+  while (__HAL_FLASH_GET_FLAG(FLASH_FLAG_BSY) != RESET)
+  {
+  }
+
+  __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | error_flags);
+
+  option_value = FLASH->OPTCR;
+  option_value &= ~(FLASH_OPTCR_SPRMOD | FLASH_OPTCR_nWRP_Msk);
+
+  if (disable == FLASH_PROTECTION_DISABLE)
+  {
+    /* SPRMOD=0 and nWRP=1 disable protection for every F446 sector. */
+    option_value |= ((uint32_t)FLASH_USER_SECTOR_MASK <<
+                     FLASH_OPTCR_nWRP_Pos);
+  }
+  else if (protection_mode == FLASH_PROTECTION_WRITE)
+  {
+    /* SPRMOD=0: a zero nWRP bit enables write protection. */
+    option_value |= ((uint32_t)(~sector_details & FLASH_USER_SECTOR_MASK) <<
+                     FLASH_OPTCR_nWRP_Pos);
+  }
+  else
+  {
+    /* SPRMOD=1: a one nWRP bit enables PCROP read/write protection. */
+    option_value |= FLASH_OPTCR_SPRMOD;
+    option_value |= ((uint32_t)sector_details << FLASH_OPTCR_nWRP_Pos);
+  }
+
+  FLASH->OPTCR = option_value;
+  FLASH->OPTCR |= FLASH_OPTCR_OPTSTRT;
+
+  while (__HAL_FLASH_GET_FLAG(FLASH_FLAG_BSY) != RESET)
+  {
+  }
+
+  if (__HAL_FLASH_GET_FLAG(FLASH_FLAG_EOP) != RESET)
+  {
+    __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP);
+  }
+
+  if (__HAL_FLASH_GET_FLAG(error_flags) != RESET)
+  {
+    status = HAL_ERROR;
+    __HAL_FLASH_CLEAR_FLAG(error_flags);
+  }
+
+  if (HAL_FLASH_OB_Lock() != HAL_OK)
+  {
+    status = HAL_ERROR;
+  }
+
+  return (uint8_t)status;
 }
 
 void bootloader_handle_mem_read(uint8_t *packet)

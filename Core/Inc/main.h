@@ -64,6 +64,9 @@ HAL_StatusTypeDef bootloader_send_nack(void);
 uint8_t get_bootloader_version(void);
 uint8_t verify_address(uint32_t go_address);
 HAL_StatusTypeDef bootloader_uart_write_data(const uint8_t *data, uint16_t length);
+uint8_t configure_flash_sector_rw_protection(uint8_t sector_details,
+                                             uint8_t protection_mode,
+                                             uint8_t disable);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
@@ -91,6 +94,10 @@ HAL_StatusTypeDef bootloader_uart_write_data(const uint8_t *data, uint16_t lengt
 #define VERIFY_CRC_FAILURE      1U
 #define ADD_VALID               0U
 #define ADD_INVALID             1U
+#define FLASH_PROTECTION_WRITE       1U
+#define FLASH_PROTECTION_READ_WRITE  2U
+#define FLASH_PROTECTION_DISABLE     1U
+#define FLASH_USER_SECTOR_MASK       0xFFU
 
 /* STM32F446 address ranges used by the GO_TO_ADDR command. */
 #define SYSTEM_MEMORY_BASE_ADDRESS  0x1FFF0000U
